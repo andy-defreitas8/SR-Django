@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import Client, Campaign, Product_Mapping, Page_Mapping, Commercial
+from django import forms
+from .models import Client, Campaign, Product_Mapping, Page_Mapping, Commercial, ga_product, ga_page
+from .forms import PageMappingForm, ProductMappingForm
+
 
 @admin.register(Client)
 class ClientsAdmin(admin.ModelAdmin):
@@ -25,18 +28,20 @@ class CampaignsAdmin(admin.ModelAdmin):
     #     return []
 
 @admin.register(Product_Mapping)
-class Product_MappingAdmin(admin.ModelAdmin):
+class ProductMappingAdmin(admin.ModelAdmin):
+    form = ProductMappingForm
     list_display = ['ga_product', 'campaign', 'map_id']
     
-    def get_fields(self, request, obj = None):
-        return ['ga_product', 'campaign']
+    # def get_fields(self, request, obj = None):
+    #     return ['ga_product', 'campaign']
     
 @admin.register(Page_Mapping)
 class Page_MappingAdmin(admin.ModelAdmin):
+    form = PageMappingForm
     list_display = ['ga_page', 'campaign', 'map_id']
 
-    def get_fields(self, request, obj = None):
-        return ['ga_page', 'campaign']
+    # def get_fields(self, request, obj = None):
+    #     return ['ga_page', 'campaign']
     
 @admin.register(Commercial)
 class CommercialAdmin(admin.ModelAdmin):
