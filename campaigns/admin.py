@@ -3,6 +3,9 @@ from django import forms
 from .models import Client, Campaign, Product_Mapping, Page_Mapping, Commercial, ga_product, ga_page
 from .forms import PageMappingForm, ProductMappingForm
 
+admin.site.site_header = "Smart Response Campaign Management Portal"
+admin.site.site_title = "Campaign Portal Admin"
+admin.site.index_title = "Welcome to the Campaign Admin"
 
 @admin.register(Client)
 class ClientsAdmin(admin.ModelAdmin):
