@@ -9,10 +9,9 @@ admin.site.index_title = "Welcome to the Campaign Admin"
 
 @admin.register(Client)
 class ClientsAdmin(admin.ModelAdmin):
-    list_display = ['name', 'client_id', 'daily_activity_start_time', 'daily_activity_end_time', 'attribution_window_duration', 'ga4_filename', 'start_date']
+    list_display = ['name', 'daily_activity_start_time', 'daily_activity_end_time', 'attribution_window_duration', 'ga4_filename', 'start_date']
     list_filter = ['start_date']
     search_fields = ['name']
-    readonly_fields = ['client_id']
 
     # def get_readonly_fields(self, request, obj = None):
     #     if obj:
@@ -21,9 +20,8 @@ class ClientsAdmin(admin.ModelAdmin):
 
 @admin.register(Campaign)
 class CampaignsAdmin(admin.ModelAdmin):
-    list_display = [ 'name', 'campaign_id', 'client_id']
+    list_display = [ 'name', 'client_id']
     search_fields = ['name']
-    readonly_fields = ['campaign_id']
 
     # def get_readonly_fields(self, request, obj = None):
     #     if obj:
@@ -33,7 +31,7 @@ class CampaignsAdmin(admin.ModelAdmin):
 @admin.register(Product_Mapping)
 class ProductMappingAdmin(admin.ModelAdmin):
     form = ProductMappingForm
-    list_display = ['ga_product', 'campaign', 'map_id']
+    list_display = ['ga_product', 'campaign']
     
     # def get_fields(self, request, obj = None):
     #     return ['ga_product', 'campaign']
@@ -41,7 +39,7 @@ class ProductMappingAdmin(admin.ModelAdmin):
 @admin.register(Page_Mapping)
 class Page_MappingAdmin(admin.ModelAdmin):
     form = PageMappingForm
-    list_display = ['ga_page', 'campaign', 'map_id']
+    list_display = ['ga_page', 'campaign']
 
     # def get_fields(self, request, obj = None):
     #     return ['ga_page', 'campaign']
