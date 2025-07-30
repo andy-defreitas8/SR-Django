@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><title>Clients</title></head>
+<body>
+    <h1>Data from Clients</h1>
+    <ul>
+        {% for row in rows %}
+            <li>{{ row.id }} - {{ row.name }}</li>
+        {% empty %}
+            <li>No data found.</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>

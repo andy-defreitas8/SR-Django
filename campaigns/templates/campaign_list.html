@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><title>Campaigns</title></head>
+<body>
+    <h1>Data from Campaigns</h1>
+    <ul>
+        {% for row in rows %}
+            <li>{{ row.id }} - {{ row.name }}</li>
+        {% empty %}
+            <li>No data found.</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
