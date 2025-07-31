@@ -81,4 +81,4 @@ class Commercial(models.Model):
         db_table = 'sr_commercials'
 
     def __str__(self):
-        return self.clearcast_commercial_title
+        return self.clearcast_commercial_title or f"Commercial {self.commercial_id}"

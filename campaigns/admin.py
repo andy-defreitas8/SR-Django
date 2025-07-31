@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django import forms
 from .models import Client, Campaign, Product_Mapping, Page_Mapping, Commercial, ga_product, ga_page
-from .forms import PageMappingForm, ProductMappingForm
+from .forms import CampaignForm, PageMappingForm, ProductMappingForm
 
 admin.site.site_header = "Smart Response Campaign Management Portal"
 admin.site.site_title = "Campaign Portal Admin"
@@ -20,13 +20,37 @@ class ClientsAdmin(admin.ModelAdmin):
 
 @admin.register(Campaign)
 class CampaignsAdmin(admin.ModelAdmin):
-    list_display = [ 'name', 'client_id']
+    list_display = [ 'name', 'client']
     search_fields = ['name']
+    form = CampaignForm
 
-    # def get_readonly_fields(self, request, obj = None):
-    #     if obj:
-    #         return['campaign_id']
-    #     return []
+    def get_fields(self, request, obj=None):
+        return ['client', 'name', 'product', 'page', 'commercial']
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+
+        product = form.cleaned_data.get('product')
+        page = form.cleaned_data.get('page')
+        commercial = form.cleaned_data.get('commercial')
+
+        if product:
+            Product_Mapping.objects.create(
+                campaign=obj,
+                ga_product=product
+            )
+
+        if page:
+            Page_Mapping.objects.create(
+                campaign=obj,
+                ga_page=page
+            )
+
+        if commercial:
+            commercial.campaign = obj
+            commercial.save(update_fields=['campaign'])
+
+
 
 @admin.register(Product_Mapping)
 class ProductMappingAdmin(admin.ModelAdmin):
