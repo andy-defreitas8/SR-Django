@@ -1,11 +1,41 @@
 from django.contrib import admin
 from django import forms
 from .models import Client, Campaign, Product_Mapping, Page_Mapping, Commercial, ga_product, ga_page
-from .forms import CampaignForm, PageMappingForm, ProductMappingForm
+from .forms import PageMappingForm, ProductMappingForm
 
 admin.site.site_header = "Smart Response Campaign Management Portal"
 admin.site.site_title = "Campaign Portal Admin"
 admin.site.index_title = "Welcome to the Campaign Admin"
+
+class ProductMappingInline(admin.TabularInline):
+    model = Product_Mapping
+    extra = 1
+    fields = ['ga_product']
+    verbose_name = "Product Mapping"
+    verbose_name_plural = "Product Mappings"
+
+class PageMappingInline(admin.TabularInline):
+    model = Page_Mapping
+    extra = 1
+    fields = ['ga_page']
+    verbose_name = "Page Mapping"
+    verbose_name_plural = "Page Mappings"
+
+class CommercialInline(admin.TabularInline):
+    model = Commercial
+    extra = 1
+    fields = ['commercial_id', 'clearcast_commercial_title']  # or any fields you want
+    verbose_name = "Commercial"
+    verbose_name_plural = "Commercials"
+
+    def has_add_permission(self, request, obj=None):
+        return True  # Optional: allow adding from campaign page
+
+    def has_change_permission(self, request, obj=None):
+        return True
+
+    def has_delete_permission(self, request, obj=None):
+        return True
 
 @admin.register(Client)
 class ClientsAdmin(admin.ModelAdmin):
@@ -19,37 +49,13 @@ class ClientsAdmin(admin.ModelAdmin):
     #     return []
 
 @admin.register(Campaign)
-class CampaignsAdmin(admin.ModelAdmin):
-    list_display = [ 'name', 'client']
+class CampaignAdmin(admin.ModelAdmin):
+    list_display = ['name', 'client']
     search_fields = ['name']
-    form = CampaignForm
+    inlines = [ProductMappingInline, PageMappingInline, CommercialInline]
 
     def get_fields(self, request, obj=None):
-        return ['client', 'name', 'product', 'page', 'commercial']
-
-    def save_model(self, request, obj, form, change):
-        super().save_model(request, obj, form, change)
-
-        product = form.cleaned_data.get('product')
-        page = form.cleaned_data.get('page')
-        commercial = form.cleaned_data.get('commercial')
-
-        if product:
-            Product_Mapping.objects.create(
-                campaign=obj,
-                ga_product=product
-            )
-
-        if page:
-            Page_Mapping.objects.create(
-                campaign=obj,
-                ga_page=page
-            )
-
-        if commercial:
-            commercial.campaign = obj
-            commercial.save(update_fields=['campaign'])
-
+        return ['client', 'name']
 
 
 @admin.register(Product_Mapping)
@@ -84,4 +90,5 @@ class CommercialAdmin(admin.ModelAdmin):
     
     def has_delete_permission(self, request, obj = ...):
         return False
+
     
