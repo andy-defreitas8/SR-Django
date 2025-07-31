@@ -1,3 +1,4 @@
+
 document.addEventListener('DOMContentLoaded', function () {
     const clientField = document.querySelector('#id_client');
     if (clientField) {
