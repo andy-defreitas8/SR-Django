@@ -19,6 +19,9 @@ class Station(models.Model):
         managed = False
         db_table = 'sr_stations'
 
+    def __str__(self):
+        return self.station_name
+
 class Station_pricing(models.Model):
     station_pricing_id = models.BigAutoField(primary_key=True)
     station = models.ForeignKey(Station, on_delete=models.CASCADE)
@@ -31,4 +34,4 @@ class Station_pricing(models.Model):
         db_table = 'sr_station_pricings'
 
     def __str__(self):
-        return f"Pricing Sheet for {self.price_date}"
+        return self.station
