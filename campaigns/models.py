@@ -50,6 +50,9 @@ class ga_page(models.Model):
         managed = False
         db_table = 'ga_pages'
 
+    def __str__(self):
+        return self.url
+
 class Product_Mapping(models.Model):
     ga_product = models.ForeignKey(ga_product, on_delete=models.CASCADE)
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE)
