@@ -74,7 +74,7 @@ class Page_Mapping(models.Model):
 class Commercial(models.Model):
     commercial_id = models.BigAutoField(primary_key=True)
     advertiser_id = models.BigIntegerField()
-    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE)
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, null=True, blank=True)
     clearcast_commercial_title = models.CharField()
     commercial_number = models.CharField()
     web_address = models.CharField()

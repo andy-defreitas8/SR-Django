@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import client_list, campaign_list, product_mapping_list, page_mapping_list
+from . import views
 
 urlpatterns = [
     path('clients/', client_list, name='client-data'),
