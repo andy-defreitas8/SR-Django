@@ -26,7 +26,7 @@ class Station_pricing(models.Model):
     station_pricing_id = models.BigAutoField(primary_key=True)
     station = models.ForeignKey(Station, on_delete=models.CASCADE)
     price_date = models.ForeignKey(Pricing_Sheet, on_delete=models.CASCADE, db_column='price_date')
-    cost_type = models.CharField(max_length=100)
+    cost_type = models.CharField(max_length=3)
     cost = models.FloatField()
 
     class Meta:
