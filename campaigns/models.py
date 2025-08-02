@@ -50,6 +50,9 @@ class ga_page(models.Model):
         managed = False
         db_table = 'ga_pages'
 
+    def __str__(self):
+        return self.url
+
 class Product_Mapping(models.Model):
     ga_product = models.ForeignKey(ga_product, on_delete=models.CASCADE)
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE)
@@ -71,7 +74,7 @@ class Page_Mapping(models.Model):
 class Commercial(models.Model):
     commercial_id = models.BigAutoField(primary_key=True)
     advertiser_id = models.BigIntegerField()
-    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE)
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, null=True, blank=True)
     clearcast_commercial_title = models.CharField()
     commercial_number = models.CharField()
     web_address = models.CharField()
@@ -81,4 +84,4 @@ class Commercial(models.Model):
         db_table = 'sr_commercials'
 
     def __str__(self):
-        return self.clearcast_commercial_title
+        return self.clearcast_commercial_title or f"Commercial {self.commercial_id}"
