@@ -67,6 +67,6 @@ class PricingSheetAdmin(admin.ModelAdmin):
 
 @admin.register(Station_pricing)
 class StationPricingAdmin(admin.ModelAdmin):
-    list_display = ['station', 'price_date', 'cost_type', 'cost']
+    list_display = ['price_date', 'station', 'start_hour', 'end_hour', 'duration', 'sales_house', 'cost_type', 'cost']
     list_filter = ['price_date']
 
