@@ -12,3 +12,4 @@ class StationPricingAdmin(admin.ModelAdmin):
     list_display = ['station', 'price_date', 'cost_type', 'cost']
     list_filter = ['price_date']
     autocomplete_fields = ['price_date']
+
