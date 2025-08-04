@@ -29,12 +29,18 @@ class Hour(models.Model):
         managed = False
         db_table = 'hours'
 
+    def __str__(self):
+        return str(self.hour)
+
 class Duration(models.Model):
     duration_seconds = models.IntegerField(primary_key=True)
 
     class Meta:
         managed = False 
         db_table = 'spot_duration'
+
+    def __str__(self):
+        return str(self.duration_seconds)
 
 class Sales_House(models.Model):
     sales_house_id = models.BigAutoField(primary_key=True)
@@ -49,7 +55,6 @@ class Sales_House(models.Model):
 
 class Station_pricing(models.Model):
     price_id = models.BigAutoField(primary_key=True)
-    seq_num = models.IntegerField()
     price_date = models.ForeignKey(Pricing_Sheet, on_delete=models.CASCADE, db_column='price_date')
     station = models.ForeignKey(Station, on_delete=models.CASCADE)
     start_hour = models.ForeignKey(Hour, on_delete=models.CASCADE, db_column = 'start_hour', related_name='start_hour', name='start_hour')
