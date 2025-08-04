@@ -1,0 +1,15 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <h2>Export Station Pricing CSV</h2>
+  <form method="post">
+    {% csrf_token %}
+    <label for="price_date">Select Price Date:</label>
+    <select name="price_date" id="price_date">
+      {% for date in dates %}
+        <option value="{{ date|date:'Y-m-d' }}">{{ date }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="button">Export CSV</button>
+  </form>
+{% endblock %}
