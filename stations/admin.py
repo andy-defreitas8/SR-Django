@@ -2,11 +2,11 @@ from django.contrib import admin, messages
 from django.urls import path
 from django.shortcuts import render, redirect
 from django.http import HttpResponse
-from django.db import connection
+from django.db import connection, transaction
 import csv
 import pandas as pd
+import math
 from io import TextIOWrapper
-from datetime import datetime
 
 from .models import Pricing_Sheet, Station_pricing, Sales_House, Station, Hour, Duration
 
@@ -20,7 +20,8 @@ class PricingSheetAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path('export-csv/', self.admin_site.admin_view(self.export_csv_view), name="export_pricing_csv"),
-            path('upload-csv/', self.admin_site.admin_view(self.upload_csv_view), name="upload_pricing_csv")
+            path('upload-csv/', self.admin_site.admin_view(self.upload_csv_view), name="upload_pricing_csv"),
+            path('insert-csv/', self.admin_site.admin_view(self.insert_csv_view), name="insert_pricing_csv"),
         ]
         return custom_urls + urls
 
@@ -178,7 +179,52 @@ class PricingSheetAdmin(admin.ModelAdmin):
 
         return render(request, "admin/upload_csv_form.html", {})
 
- 
+    def insert_csv_view(self, request):
+        if request.method != "POST":
+            messages.error(request, "Invalid request method.")
+            return redirect("admin:upload_pricing_csv")
+
+        validated_data = request.session.get("validated_station_pricing")
+
+        if not validated_data:
+            messages.error(request, "No validated data available. Please upload and validate a CSV first.")
+            return redirect("admin:upload_pricing_csv")
+
+        try:
+            # === ✅ Convert NaN to None for nullable fields ===
+            for row in validated_data:
+                for field in ['start_hour', 'end_hour', 'duration', 'sales_house_id']:
+                    if pd.isna(row.get(field)):
+                        row[field] = None
+
+            # === ✅ Build model instances ===
+            instances = []
+            for row in validated_data:
+                instance = Station_pricing(
+                    price_date_id=row['price_date'],           # FK to Pricing_Sheet
+                    station_id=row['station_id'],              # FK to Station
+                    start_hour_id=row['start_hour'],           # FK to Hour (nullable)
+                    end_hour_id=row['end_hour'],               # FK to Hour (nullable)
+                    duration_id=row['duration'],               # FK to Duration (nullable)
+                    sales_house_id=row.get('sales_house_id'),  # FK to Sales_House (nullable)
+                    cost_type=row['cost_type'],
+                    cost=row['cost']
+                )
+                instances.append(instance)
+
+            # === ✅ Bulk insert with transaction ===
+            with transaction.atomic():
+                Station_pricing.objects.bulk_create(instances, batch_size=1000)
+
+            # === ✅ Clean up ===
+            del request.session['validated_station_pricing']
+            messages.success(request, f"Successfully inserted {len(instances)} new station pricing records.")
+            return redirect("admin:upload_pricing_csv")
+
+        except Exception as e:
+            messages.error(request, f"An error occurred during insertion: {str(e)}")
+            return redirect("admin:upload_pricing_csv")
+
 
 @admin.register(Station_pricing)
 class StationPricingAdmin(admin.ModelAdmin):

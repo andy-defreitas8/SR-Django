@@ -19,4 +19,14 @@
     <button type="submit" class="button default">Upload</button>
   </form>
 
+  {% if request.session.validated_station_pricing %}
+    <hr>
+    <h3>Insert Validated Data</h3>
+    <form method="post" action="{% url 'admin:insert_pricing_csv' %}">
+        {% csrf_token %}
+        <button type="submit" class="button default">Insert Validated CSV Rows</button>
+    </form>
+  {% endif %}
+
+
 {% endblock %}
