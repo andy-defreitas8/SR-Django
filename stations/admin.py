@@ -83,6 +83,9 @@ class PricingSheetAdmin(admin.ModelAdmin):
             try:
                 df = pd.read_csv(TextIOWrapper(uploaded_file.file, encoding='utf-8'))
 
+                # Replace blank strings or NaN with None (Python's null equivalent)
+                df = df.replace(r'^\s*$', None, regex=True)
+
                 # === ✅ Expected Columns ===
                 expected_columns = {
                     'price_date', 'station_name', 'start_hour', 'end_hour',
@@ -104,7 +107,10 @@ class PricingSheetAdmin(admin.ModelAdmin):
 
                 # === ✅ Duration Check ===
                 valid_durations = set(Duration.objects.values_list('duration_seconds', flat=True))
-                unknown_durations = set(df['duration']) - valid_durations
+
+                non_null_durations=df['duration'].dropna()
+                unknown_durations = set(non_null_durations) - valid_durations
+
                 if unknown_durations:
                     messages.error(request, f"Unknown duration values: {', '.join(map(str, unknown_durations))}")
                     return redirect("admin:upload_pricing_csv")
@@ -126,21 +132,32 @@ class PricingSheetAdmin(admin.ModelAdmin):
 
                 # === ✅ Sales House Name Check ===
                 known_sales_houses = dict(Sales_House.objects.values_list('sales_house_name', 'sales_house_id'))
-                df['sales_house_id'] = df['sales_house_name'].map(known_sales_houses)
-                if df['sales_house_id'].isnull().any():
-                    unknown_sales_houses = df[df['sales_house_id'].isnull()]['sales_house_name'].unique()
-                    messages.error(request, f"Unknown sales house names: {', '.join(unknown_sales_houses)}")
+
+                # Only map non-null values
+                df['sales_house_id'] = df['sales_house_name'].apply(
+                    lambda x: known_sales_houses.get(x) if pd.notnull(x) else None
+                )
+
+                # Check only non-null entries for failed mapping
+                invalid_sales_house_rows = df[
+                    df['sales_house_name'].notna() & df['sales_house_id'].isna()
+                ]
+
+                if not invalid_sales_house_rows.empty:
+                    unknown_sales = invalid_sales_house_rows['sales_house_name'].unique()
+                    messages.error(request, f"Unknown sales house names: {', '.join(unknown_sales)}")
                     return redirect("admin:upload_pricing_csv")
+
 
                 # === ✅ Start/End Hour Check ===
                 valid_hours = set(Hour.objects.values_list('hour', flat=True))
 
-                missing_start_hours = set(df['start_hour']) - valid_hours
-                missing_end_hours = set(df['end_hour']) - valid_hours
-                missing_hours = missing_start_hours.union(missing_end_hours)
+                invalid_start_hours = set(df['start_hour'].dropna()) - valid_hours
+                invalid_end_hours = set(df['end_hour'].dropna()) - valid_hours
+                invalid_hours = invalid_start_hours.union(invalid_end_hours)
 
-                if missing_hours:
-                    messages.error(request, f"Unknown hour values: {', '.join(map(str, missing_hours))}")
+                if invalid_hours:
+                    messages.error(request, f"Unknown hour values: {', '.join(map(str, invalid_hours))}")
                     return redirect("admin:upload_pricing_csv")
 
 
