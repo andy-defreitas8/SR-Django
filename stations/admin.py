@@ -4,8 +4,11 @@ from django.shortcuts import render, redirect
 from django.http import HttpResponse
 from django.db import connection
 import csv
+import pandas as pd
+from io import TextIOWrapper
+from datetime import datetime
 
-from .models import Pricing_Sheet, Station_pricing
+from .models import Pricing_Sheet, Station_pricing, Sales_House, Station, Hour, Duration
 
 
 @admin.register(Pricing_Sheet)
@@ -64,25 +67,100 @@ class PricingSheetAdmin(admin.ModelAdmin):
         # Show the dropdown form
         all_dates = Pricing_Sheet.objects.values_list('price_date', flat=True).order_by('-price_date')
         return render(request, 'admin/export_csv_form.html', {'dates': all_dates})
-    
+
     def upload_csv_view(self, request):
         if request.method == "POST":
             uploaded_file = request.FILES.get("csv_file")
+
             if not uploaded_file:
                 messages.error(request, "No file was uploaded.")
                 return redirect("admin:upload_pricing_csv")
-            
+
             if not uploaded_file.name.lower().endswith('.csv'):
                 messages.error(request, "The uploaded file must be a .csv file.")
                 return redirect("admin:upload_pricing_csv")
 
-            request.session['uploaded_filename'] = uploaded_file.name
+            try:
+                df = pd.read_csv(TextIOWrapper(uploaded_file.file, encoding='utf-8'))
 
-            # Success placeholder
-            messages.success(request, f"File '{uploaded_file.name}' uploaded. (Validation to be implemented.)")
-            return redirect("admin:upload_pricing_csv")
+                # === ✅ Expected Columns ===
+                expected_columns = {
+                    'price_date', 'station_name', 'start_hour', 'end_hour',
+                    'duration', 'sales_house_name', 'cost_type', 'cost'
+                }
+
+                if not expected_columns.issubset(set(df.columns)):
+                    missing = expected_columns - set(df.columns)
+                    messages.error(request, f"Missing required columns: {', '.join(missing)}")
+                    return redirect("admin:upload_pricing_csv")
+
+                # === ✅ Required Field Check ===
+                required_fields = ['price_date', 'station_name', 'cost_type', 'cost']
+                missing_required = df[required_fields].isnull().any()
+                if missing_required.any():
+                    missing_cols = missing_required[missing_required == True].index.tolist()
+                    messages.error(request, f"Missing required values in columns: {', '.join(missing_cols)}")
+                    return redirect("admin:upload_pricing_csv")
+
+                # === ✅ Duration Check ===
+                valid_durations = set(Duration.objects.values_list('duration_seconds', flat=True))
+                unknown_durations = set(df['duration']) - valid_durations
+                if unknown_durations:
+                    messages.error(request, f"Unknown duration values: {', '.join(map(str, unknown_durations))}")
+                    return redirect("admin:upload_pricing_csv")
+
+                # === ✅ Date Format ===
+                try:
+                    df['price_date'] = pd.to_datetime(df['price_date'], format='%Y-%m-%d').dt.strftime('%Y-%m-%d')
+                except ValueError:
+                    messages.error(request, "price_date must be in YYYY-MM-DD format.")
+                    return redirect("admin:upload_pricing_csv")
+                
+                # === ✅ Station Name Check ===
+                known_stations = dict(Station.objects.values_list('station_name', 'station_id'))
+                df['station_id'] = df['station_name'].map(known_stations)
+                if df['station_id'].isnull().any():
+                    unknown_stations = df[df['station_id'].isnull()]['station_name'].unique()
+                    messages.error(request, f"Unknown station names: {', '.join(unknown_stations)}")
+                    return redirect("admin:upload_pricing_csv")
+
+                # === ✅ Sales House Name Check ===
+                known_sales_houses = dict(Sales_House.objects.values_list('sales_house_name', 'sales_house_id'))
+                df['sales_house_id'] = df['sales_house_name'].map(known_sales_houses)
+                if df['sales_house_id'].isnull().any():
+                    unknown_sales_houses = df[df['sales_house_id'].isnull()]['sales_house_name'].unique()
+                    messages.error(request, f"Unknown sales house names: {', '.join(unknown_sales_houses)}")
+                    return redirect("admin:upload_pricing_csv")
+
+                # === ✅ Start/End Hour Check ===
+                valid_hours = set(Hour.objects.values_list('hour', flat=True))
+
+                missing_start_hours = set(df['start_hour']) - valid_hours
+                missing_end_hours = set(df['end_hour']) - valid_hours
+                missing_hours = missing_start_hours.union(missing_end_hours)
+
+                if missing_hours:
+                    messages.error(request, f"Unknown hour values: {', '.join(map(str, missing_hours))}")
+                    return redirect("admin:upload_pricing_csv")
+
+
+                # === ✅ Save cleaned version for insertion ===
+                cleaned_data = df[[
+                    'price_date', 'station_id', 'start_hour', 'end_hour',
+                    'duration', 'sales_house_id', 'cost_type', 'cost'
+                ]].to_dict(orient='records')
+
+
+                request.session['validated_station_pricing'] = cleaned_data
+                messages.success(request, f"Successfully validated {len(cleaned_data)} rows. Ready to insert.")
+                return redirect("admin:upload_pricing_csv")
+
+            except Exception as e:
+                messages.error(request, f"An error occurred while processing the CSV: {str(e)}")
+                return redirect("admin:upload_pricing_csv")
 
         return render(request, "admin/upload_csv_form.html", {})
+
  
 
 @admin.register(Station_pricing)
