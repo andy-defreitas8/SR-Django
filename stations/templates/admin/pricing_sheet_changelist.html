@@ -3,6 +3,9 @@
 {% block object-tools-items %}
   {{ block.super }}
   <li>
-    <a href="{% url 'admin:export_pricing_csv' %}" class="button">Export Station Pricing CSV</a>
+    <a href="{% url 'admin:upload_pricing_csv' %}" class="button">Import CSV</a>
+  </li>
+  <li>
+    <a href="{% url 'admin:export_pricing_csv' %}" class="button">Export CSV</a>
   </li>
 {% endblock %}

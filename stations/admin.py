@@ -1,6 +1,6 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.urls import path
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.http import HttpResponse
 from django.db import connection
 import csv
@@ -16,7 +16,8 @@ class PricingSheetAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            path('export-csv/', self.admin_site.admin_view(self.export_csv_view), name="export_pricing_csv")
+            path('export-csv/', self.admin_site.admin_view(self.export_csv_view), name="export_pricing_csv"),
+            path('upload-csv/', self.admin_site.admin_view(self.upload_csv_view), name="upload_pricing_csv")
         ]
         return custom_urls + urls
 
@@ -63,6 +64,25 @@ class PricingSheetAdmin(admin.ModelAdmin):
         # Show the dropdown form
         all_dates = Pricing_Sheet.objects.values_list('price_date', flat=True).order_by('-price_date')
         return render(request, 'admin/export_csv_form.html', {'dates': all_dates})
+    
+    def upload_csv_view(self, request):
+        if request.method == "POST":
+            uploaded_file = request.FILES.get("csv_file")
+            if not uploaded_file:
+                messages.error(request, "No file was uploaded.")
+                return redirect("admin:upload_pricing_csv")
+            
+            if not uploaded_file.name.lower().endswith('.csv'):
+                messages.error(request, "The uploaded file must be a .csv file.")
+                return redirect("admin:upload_pricing_csv")
+
+            request.session['uploaded_filename'] = uploaded_file.name
+
+            # Success placeholder
+            messages.success(request, f"File '{uploaded_file.name}' uploaded. (Validation to be implemented.)")
+            return redirect("admin:upload_pricing_csv")
+
+        return render(request, "admin/upload_csv_form.html", {})
  
 
 @admin.register(Station_pricing)
