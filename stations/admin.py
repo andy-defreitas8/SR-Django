@@ -71,6 +71,7 @@ class PricingSheetAdmin(admin.ModelAdmin):
 
     def upload_csv_view(self, request):
         if request.method == "POST":
+
             uploaded_file = request.FILES.get("csv_file")
 
             if not uploaded_file:
@@ -116,11 +117,17 @@ class PricingSheetAdmin(admin.ModelAdmin):
                     messages.error(request, f"Unknown duration values: {', '.join(map(str, unknown_durations))}")
                     return redirect("admin:upload_pricing_csv")
 
-                # === ✅ Date Format ===
+                # === ✅ Parse and validate price_date column ===
                 try:
-                    df['price_date'] = pd.to_datetime(df['price_date'], format='%Y-%m-%d').dt.strftime('%Y-%m-%d')
-                except ValueError:
-                    messages.error(request, "price_date must be in YYYY-MM-DD format.")
+                    df['price_date'] = pd.to_datetime(df['price_date'], dayfirst=True, errors='coerce')
+                    if df['price_date'].isnull().any():
+                        messages.error(request, "One or more rows have invalid date formats. Please use DD/MM/YYYY or YYYY-MM-DD.")
+                        return redirect("admin:upload_pricing_csv")
+
+                    # Standardize to YYYY-MM-DD for matching
+                    df['price_date'] = df['price_date'].dt.strftime('%Y-%m-%d')
+                except Exception as e:
+                    messages.error(request, f"Failed to parse dates: {str(e)}")
                     return redirect("admin:upload_pricing_csv")
                 
                 # === ✅ Station Name Check ===
@@ -128,8 +135,14 @@ class PricingSheetAdmin(admin.ModelAdmin):
                 df['station_id'] = df['station_name'].map(known_stations)
                 if df['station_id'].isnull().any():
                     unknown_stations = df[df['station_id'].isnull()]['station_name'].unique()
-                    messages.error(request, f"Unknown station names: {', '.join(unknown_stations)}")
+                    station_list = Station.objects.values_list('station_name', flat=True).order_by('station_name')
+                    messages.error(
+                        request,
+                        f"Unknown station name(s): {', '.join(unknown_stations)}"
+                    )
+
                     return redirect("admin:upload_pricing_csv")
+
 
                 # === ✅ Sales House Name Check ===
                 known_sales_houses = dict(Sales_House.objects.values_list('sales_house_name', 'sales_house_id'))
@@ -178,7 +191,6 @@ class PricingSheetAdmin(admin.ModelAdmin):
                 return redirect("admin:upload_pricing_csv")
 
         return render(request, "admin/upload_csv_form.html", {})
-
 
 
     def insert_csv_view(self, request):
