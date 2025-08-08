@@ -53,7 +53,7 @@ class Sales_House(models.Model):
     def __str__(self):
         return self.sales_house_name
 
-class Station_pricing(models.Model):
+class Station_Pricing(models.Model):
     price_id = models.BigAutoField(primary_key=True)
     price_date = models.ForeignKey(Pricing_Sheet, on_delete=models.CASCADE, db_column='price_date')
     station = models.ForeignKey(Station, on_delete=models.CASCADE)
