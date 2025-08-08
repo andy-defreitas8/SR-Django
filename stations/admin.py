@@ -9,7 +9,7 @@ import math
 from io import TextIOWrapper
 from datetime import timedelta
 
-from .models import Pricing_Sheet, Station_pricing, Sales_House, Station, Hour, Duration, Break
+from .models import Pricing_Sheet, Station_Pricing, Sales_House, Station, Hour, Duration, Break
 
 
 @admin.register(Pricing_Sheet)
@@ -43,6 +43,83 @@ class PricingSheetAdmin(admin.ModelAdmin):
             breaks = breaks.filter(standard_datetime__date__lte=pricing_end_date)
 
         return breaks
+
+    def assign_prices_to_breaks(self, price_date, breaks):
+        """
+        Assigns Station_Pricing price_id to each Break in `breaks` for the given price_date
+        using bottom-up priority order and wildcard matching.
+        
+        Returns:
+            (success, errors)
+            - success: bool, True if all breaks matched and updated
+            - errors: list of dicts containing break details that could not be matched
+        """
+        errors = []
+
+        # Step 1: Preload all relevant pricing rows for this price_date
+        pricing_qs = Station_Pricing.objects.filter(price_date=price_date).select_related(
+            'station', 'sales_house', 'start_hour', 'end_hour', 'duration'
+        ).order_by('-price_id')  # Bottom-up priority
+
+        # Step 2: Group pricing rows by station for faster lookup
+        pricing_by_station = {}
+        for p in pricing_qs:
+            pricing_by_station.setdefault(p.station_id, []).append(p)
+
+        matched_breaks = []
+
+        # Step 3: Iterate through breaks and find matching pricing
+        for br in breaks:
+            break_hour = br.standard_datetime.hour
+            station_id = br.station_id
+            sales_house_id = br.sales_house_id
+            duration_val = br.spot_duration
+
+            matched_price = None
+
+            # Get pricing rows only for this break's station
+            for price_row in pricing_by_station.get(station_id, []):
+                # Sales house match: exact or wildcard
+                if price_row.sales_house_id is not None and price_row.sales_house_id != sales_house_id:
+                    continue
+
+                # Duration match: exact or wildcard
+                if price_row.duration_id is not None:
+                    if price_row.duration.duration_seconds != duration_val:
+                        continue
+
+                # Hour match: exact or wildcard
+                if price_row.start_hour_id is not None and price_row.end_hour_id is not None:
+                    start_h = price_row.start_hour.hour
+                    end_h = price_row.end_hour.hour
+                    if not (start_h <= break_hour < end_h):
+                        continue
+
+                matched_price = price_row
+                break  # Stop at first match due to bottom-up ordering
+
+            if matched_price:
+                br.price_id = matched_price.price_id
+                matched_breaks.append(br)
+            else:
+                errors.append({
+                    'break_id': br.break_id,
+                    'station': br.station.station_name if br.station else None,
+                    'datetime': br.standard_datetime,
+                    'sales_house': br.sales_house.sales_house_name if br.sales_house else None,
+                    'duration': br.spot_duration,
+                })
+
+        # Step 4: Commit if no errors
+        if not errors:
+            with transaction.atomic():
+                Break.objects.bulk_update(matched_breaks, ['price_id'])
+            return True, []
+
+        # Step 5: Return errors without committing
+        return False, errors
+
+
 
     def export_csv_view(self, request):
         if request.method == 'POST':
@@ -240,7 +317,7 @@ class PricingSheetAdmin(admin.ModelAdmin):
                 messages.info(request, f"Pricing sheet for {price_date} was automatically created.")
 
             # === ✅ Fetch existing records for that price_date ===
-            existing_rows = Station_pricing.objects.filter(price_date=price_date).values(
+            existing_rows = Station_Pricing.objects.filter(price_date=price_date).values(
                 'price_date',
                 'station_id',
                 'start_hour',
@@ -288,7 +365,7 @@ class PricingSheetAdmin(admin.ModelAdmin):
 
             # === ✅ Build model instances ===
             instances = [
-                Station_pricing(
+                Station_Pricing(
                     price_date_id=row['price_date'],
                     station_id=row['station_id'],
                     start_hour_id=int(row.get('start_hour')) if row.get('start_hour') is not None else None,
@@ -303,7 +380,7 @@ class PricingSheetAdmin(admin.ModelAdmin):
 
             # === ✅ Insert with transaction ===
             with transaction.atomic():
-                Station_pricing.objects.bulk_create(instances, batch_size=1000)
+                Station_Pricing.objects.bulk_create(instances, batch_size=1000)
 
             # === ✅ Clean up and feedback ===
             del request.session['validated_station_pricing']
@@ -318,6 +395,17 @@ class PricingSheetAdmin(admin.ModelAdmin):
             breaks = admin_instance.get_breaks_in_pricing_window(price_date)
             messages.info(request, f"{breaks.count()} breaks fall within the pricing window starting {price_date}.")
 
+            # Phase 1: Get breaks in pricing window
+            breaks = self.get_breaks_in_pricing_window(price_date)
+
+            # Phase 2: Assign prices to breaks
+            success, errors = self.assign_prices_to_breaks(price_date, breaks)
+
+            if success:
+                messages.success(request, f"Pricing assigned to {breaks.count()} breaks for {price_date}.")
+            else:
+                messages.error(request, f"{len(errors)} breaks could not be matched to any price.")
+                # Optional: display details of errors for debugging
 
             return redirect("admin:upload_pricing_csv")
 
@@ -327,7 +415,7 @@ class PricingSheetAdmin(admin.ModelAdmin):
 
 
 
-@admin.register(Station_pricing)
+@admin.register(Station_Pricing)
 class StationPricingAdmin(admin.ModelAdmin):
     list_display = ['price_date', 'station', 'start_hour', 'end_hour', 'duration', 'sales_house', 'cost_type', 'cost']
     list_filter = ['price_date']
