@@ -7,8 +7,9 @@ import csv
 import pandas as pd
 import math
 from io import TextIOWrapper
+from datetime import timedelta
 
-from .models import Pricing_Sheet, Station_pricing, Sales_House, Station, Hour, Duration
+from .models import Pricing_Sheet, Station_pricing, Sales_House, Station, Hour, Duration, Break
 
 
 @admin.register(Pricing_Sheet)
@@ -24,6 +25,24 @@ class PricingSheetAdmin(admin.ModelAdmin):
             path('insert-csv/', self.admin_site.admin_view(self.insert_csv_view), name="insert_pricing_csv"),
         ]
         return custom_urls + urls
+    
+    def get_breaks_in_pricing_window(self, price_date):
+        # Step 1: Find the next pricing sheet, if any
+        next_sheet = Pricing_Sheet.objects.filter(price_date__gt=price_date).order_by('price_date').first()
+
+        # Step 2: Determine pricing window end date
+        if next_sheet:
+            pricing_end_date = next_sheet.price_date - timedelta(days=1)
+        else:
+            pricing_end_date = None  # No end date — use open-ended range
+
+        # Step 3: Filter breaks by date range using standard_datetime
+        breaks = Break.objects.filter(standard_datetime__date__gte=price_date)
+
+        if pricing_end_date:
+            breaks = breaks.filter(standard_datetime__date__lte=pricing_end_date)
+
+        return breaks
 
     def export_csv_view(self, request):
         if request.method == 'POST':
@@ -292,6 +311,14 @@ class PricingSheetAdmin(admin.ModelAdmin):
                 request,
                 f"Inserted {len(instances)} new rows. {len(validated_data) - len(instances)} duplicates were skipped."
             )
+
+            # === Applying new pricing sheet to breaks===
+            pricing_sheet, created = Pricing_Sheet.objects.get_or_create(price_date=price_date)
+            admin_instance = admin.site._registry[Pricing_Sheet]
+            breaks = admin_instance.get_breaks_in_pricing_window(price_date)
+            messages.info(request, f"{breaks.count()} breaks fall within the pricing window starting {price_date}.")
+
+
             return redirect("admin:upload_pricing_csv")
 
         except Exception as e:
