@@ -68,3 +68,19 @@ class Station_pricing(models.Model):
         managed = False
         db_table = 'sr_station_prices'
 
+class Break(models.Model):
+    break_id = models.BigAutoField(primary_key=True)
+    station = models.ForeignKey(Station, on_delete=models.CASCADE)
+    sales_house = models.ForeignKey(Sales_House, on_delete=models.SET_NULL, null=True, blank=True)
+    standard_datetime = models.DateTimeField()
+    spot_duration = models.BigIntegerField()
+    price = models.ForeignKey(Station_pricing, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = 'sr_breaks'
+
+    def __str__(self):
+        return f"Break {self.break_id} on {self.break_date} ({self.station.station_name})"
+
+
