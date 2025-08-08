@@ -74,7 +74,7 @@ class Break(models.Model):
     sales_house = models.ForeignKey(Sales_House, on_delete=models.SET_NULL, null=True, blank=True)
     standard_datetime = models.DateTimeField()
     spot_duration = models.BigIntegerField()
-    price = models.ForeignKey(Station_pricing, on_delete=models.SET_NULL, null=True, blank=True)
+    price = models.ForeignKey(Station_Pricing, on_delete=models.SET_NULL, null=True, blank=True)
 
     class Meta:
         managed = False
