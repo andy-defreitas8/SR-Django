@@ -8,6 +8,9 @@ import pandas as pd
 import math
 from io import TextIOWrapper
 from datetime import timedelta
+from django.utils.html import format_html
+from django.utils.safestring import mark_safe
+from datetime import datetime
 
 from .models import Pricing_Sheet, Station_Pricing, Sales_House, Station, Hour, Duration, Break
 
@@ -45,58 +48,73 @@ class PricingSheetAdmin(admin.ModelAdmin):
         return breaks
 
     def assign_prices_to_breaks(self, price_date, breaks):
-        """
-        Assigns Station_Pricing price_id to each Break in `breaks` for the given price_date
-        using bottom-up priority order and wildcard matching.
-        
-        Returns:
-            (success, errors)
-            - success: bool, True if all breaks matched and updated
-            - errors: list of dicts containing break details that could not be matched
-        """
         errors = []
 
-        # Step 1: Preload all relevant pricing rows for this price_date
-        pricing_qs = Station_Pricing.objects.filter(price_date=price_date).select_related(
-            'station', 'sales_house', 'start_hour', 'end_hour', 'duration'
-        ).order_by('-price_id')  # Bottom-up priority
+        print("Price date: ", {price_date})
 
-        # Step 2: Group pricing rows by station for faster lookup
-        pricing_by_station = {}
-        for p in pricing_qs:
-            pricing_by_station.setdefault(p.station_id, []).append(p)
+        # Step 1: Get all pricing rows for the date
+        pricing_qs = (
+            Station_Pricing.objects
+            .filter(price_date=price_date)
+            .select_related('station')  # required
+            .prefetch_related('sales_house', 'start_hour', 'end_hour', 'duration')  # optional
+            .order_by('-price_id')  # bottom-up priority
+        )
+
+        print(pricing_qs.query)
+        pricing_station_ids = list({pr.station_id for pr in pricing_qs})
+        print(f"Station IDs available in pricing_qs: {pricing_station_ids}")
 
         matched_breaks = []
 
-        # Step 3: Iterate through breaks and find matching pricing
         for br in breaks:
             break_hour = br.standard_datetime.hour
             station_id = br.station_id
             sales_house_id = br.sales_house_id
             duration_val = br.spot_duration
-
             matched_price = None
+            fail_reason = "Unknown mismatch"
 
-            # Get pricing rows only for this break's station
-            for price_row in pricing_by_station.get(station_id, []):
-                # Sales house match: exact or wildcard
-                if price_row.sales_house_id is not None and price_row.sales_house_id != sales_house_id:
-                    continue
+            print(f"\n--- Matching break_id={br.break_id} ---")
+            print(f"Break station_id={station_id}")
 
-                # Duration match: exact or wildcard
-                if price_row.duration_id is not None:
-                    if price_row.duration.duration_seconds != duration_val:
-                        continue
+            # Instead of looking in a dict, filter directly from pricing_qs
+            station_prices = [
+                pr for pr in pricing_qs
+                if pr.station_id == station_id
+            ]
 
-                # Hour match: exact or wildcard
-                if price_row.start_hour_id is not None and price_row.end_hour_id is not None:
-                    start_h = price_row.start_hour.hour
-                    end_h = price_row.end_hour.hour
-                    if not (start_h <= break_hour < end_h):
-                        continue
+            if not station_prices:
+                fail_reason = "No station pricing rows"
+            else:
+                sales_house_matches = [
+                    pr for pr in station_prices
+                    if pr.sales_house_id is None or pr.sales_house_id == sales_house_id
+                ]
+                if not sales_house_matches:
+                    fail_reason = "Sales house mismatch"
+                else:
+                    duration_matches = [
+                        pr for pr in sales_house_matches
+                        if pr.duration_id is None or pr.duration.duration_seconds == duration_val
+                    ]
+                    if not duration_matches:
+                        fail_reason = "Duration mismatch"
+                    else:
+                        hour_matches = []
+                        for pr in duration_matches:
+                            if pr.start_hour_id is None or pr.end_hour_id is None:
+                                hour_matches.append(pr)
+                            else:
+                                start_h = pr.start_hour.hour
+                                end_h = pr.end_hour.hour
+                                if start_h <= break_hour < end_h:
+                                    hour_matches.append(pr)
 
-                matched_price = price_row
-                break  # Stop at first match due to bottom-up ordering
+                        if not hour_matches:
+                            fail_reason = "Hour mismatch"
+                        else:
+                            matched_price = hour_matches[0]  # priority preserved
 
             if matched_price:
                 br.price_id = matched_price.price_id
@@ -108,17 +126,15 @@ class PricingSheetAdmin(admin.ModelAdmin):
                     'datetime': br.standard_datetime,
                     'sales_house': br.sales_house.sales_house_name if br.sales_house else None,
                     'duration': br.spot_duration,
+                    'reason': fail_reason
                 })
 
-        # Step 4: Commit if no errors
         if not errors:
             with transaction.atomic():
                 Break.objects.bulk_update(matched_breaks, ['price_id'])
             return True, []
 
-        # Step 5: Return errors without committing
         return False, errors
-
 
 
     def export_csv_view(self, request):
@@ -404,8 +420,37 @@ class PricingSheetAdmin(admin.ModelAdmin):
             if success:
                 messages.success(request, f"Pricing assigned to {breaks.count()} breaks for {price_date}.")
             else:
-                messages.error(request, f"{len(errors)} breaks could not be matched to any price.")
-                # Optional: display details of errors for debugging
+                # Build HTML table for unmatched breaks
+                table_html = "<table style='border-collapse: collapse; width: 100%;'>"
+                table_html += (
+                    "<tr>"
+                    "<th style='border: 1px solid black; padding: 4px;'>Break ID</th>"
+                    "<th style='border: 1px solid black; padding: 4px;'>Station</th>"
+                    "<th style='border: 1px solid black; padding: 4px;'>Date/Time</th>"
+                    "<th style='border: 1px solid black; padding: 4px;'>Sales House</th>"
+                    "<th style='border: 1px solid black; padding: 4px;'>Duration</th>"
+                    "<th style='border: 1px solid black; padding: 4px;'>Reason</th>"
+                    "</tr>"
+                )
+
+                for err in errors:
+                    table_html += (
+                        "<tr>"
+                        f"<td style='border: 1px solid black; padding: 4px;'>{err['break_id']}</td>"
+                        f"<td style='border: 1px solid black; padding: 4px;'>{err['station']}</td>"
+                        f"<td style='border: 1px solid black; padding: 4px;'>{err['datetime']}</td>"
+                        f"<td style='border: 1px solid black; padding: 4px;'>{err['sales_house'] or ''}</td>"
+                        f"<td style='border: 1px solid black; padding: 4px;'>{err['duration']}</td>"
+                        f"<td style='border: 1px solid black; padding: 4px;'>{err['reason']}</td>"
+                        "</tr>"
+                    )
+
+                table_html += "</table>"
+
+                messages.error(
+                    request,
+                    mark_safe(f"<b>{len(errors)} breaks could not be matched to any price:</b><br>{table_html}")
+                )
 
             return redirect("admin:upload_pricing_csv")
 
