@@ -1,0 +1,37 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Upload Product Baseline CSV{% endblock %}
+
+{% block content %}
+  <div class="admin-upload-form">
+    <h1>Upload Product Baseline CSV</h1>
+
+    {# ✅ Display messages (success, error, info) #}
+    {% if messages %}
+      <ul class="messagelist">
+        {% for message in messages %}
+          <li class="{{ message.tags }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {# ✅ CSV Upload Form #}
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div>
+        <label for="csv_file"><strong>Select CSV file:</strong></label><br>
+        <input type="file" name="csv_file" accept=".csv" required />
+      </div>
+      <br>
+      <button type="submit" class="default">Upload</button>
+    </form>
+
+    <!-- {% if request.session.validated_product_baseline %}
+      <form method="post" action="{% url 'admin:insert_pricing_csv' %}">
+        {% csrf_token %}
+        <button type="submit" class="default">Insert Validated Rows into Database</button>
+      </form>
+    {% endif %}
+  </div> -->
+{% endblock %}
