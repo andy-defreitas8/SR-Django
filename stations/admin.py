@@ -156,7 +156,7 @@ class PricingSheetAdmin(admin.ModelAdmin):
                 LEFT JOIN sr_exclusive.hours sh ON sh.hour = sp.start_hour
                 LEFT JOIN sr_exclusive.hours eh ON eh.hour = sp.end_hour
                 LEFT JOIN sr_exclusive.sr_sales_houses shs ON shs.sales_house_id = sp.sales_house_id
-                WHERE sp.price_date = '2025-08-01'
+                WHERE sp.price_date = %s
                 ORDER BY sp.price_id;
             """
 
