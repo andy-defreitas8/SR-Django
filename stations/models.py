@@ -53,7 +53,7 @@ class Sales_House(models.Model):
     def __str__(self):
         return self.sales_house_name
 
-class Station_pricing(models.Model):
+class Station_Pricing(models.Model):
     price_id = models.BigAutoField(primary_key=True)
     price_date = models.ForeignKey(Pricing_Sheet, on_delete=models.CASCADE, db_column='price_date')
     station = models.ForeignKey(Station, on_delete=models.CASCADE)
@@ -67,4 +67,20 @@ class Station_pricing(models.Model):
     class Meta:
         managed = False
         db_table = 'sr_station_prices'
+
+class Break(models.Model):
+    break_id = models.BigAutoField(primary_key=True)
+    station = models.ForeignKey(Station, on_delete=models.CASCADE)
+    sales_house = models.ForeignKey(Sales_House, on_delete=models.SET_NULL, null=True, blank=True)
+    standard_datetime = models.DateTimeField()
+    spot_duration = models.BigIntegerField()
+    price = models.ForeignKey(Station_Pricing, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = 'sr_breaks'
+
+    def __str__(self):
+        return f"Break {self.break_id} on {self.break_date} ({self.station.station_name})"
+
 
