@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django import forms
-from .models import Client, Campaign, Product_Mapping, Page_Mapping, Commercial, ga_product, ga_page
+from .models import Client, Campaign, Product_Mapping, Page_Mapping, Commercial, Product, Page
 from .forms import CommercialInlineForm
 
 admin.site.site_header = "Smart Response Campaign Management Portal"
@@ -16,9 +16,9 @@ class ProductMappingInline(admin.TabularInline):
         if db_field.name == 'ga_product':
             client_id = request.GET.get('client_id')
             if client_id:
-                kwargs["queryset"] = ga_product.objects.filter(client_id=client_id)
+                kwargs["queryset"] = Product.objects.filter(client_id=client_id)
             else:
-                kwargs["queryset"] = ga_product.objects.none()
+                kwargs["queryset"] = Product.objects.none()
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
@@ -31,9 +31,9 @@ class PageMappingInline(admin.TabularInline):
         if db_field.name == 'ga_page':
             client_id = request.GET.get('client_id')
             if client_id:
-                kwargs["queryset"] = ga_page.objects.filter(client_id=client_id)
+                kwargs["queryset"] = Page.objects.filter(client_id=client_id)
             else:
-                kwargs["queryset"] = ga_page.objects.none()
+                kwargs["queryset"] = Page.objects.none()
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
@@ -99,4 +99,4 @@ class CommercialAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj = ...):
         return False
 
-    
+

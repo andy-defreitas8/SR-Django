@@ -1,5 +1,5 @@
 from django import forms
-from .models import Product_Mapping, Page_Mapping, Campaign, Client, ga_page, ga_product, Commercial
+from .models import Product_Mapping, Page_Mapping, Campaign, Client, Page, Product, Commercial
 
 
 class CommercialInlineForm(forms.ModelForm):

@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from django.http import JsonResponse
-from .models import Client, Campaign, Product_Mapping, Page_Mapping, ga_product, ga_page
+from .models import Client, Campaign, Product_Mapping, Page_Mapping, Product, Page
 
 def client_list(request):
     rows = Client.objects.all()
