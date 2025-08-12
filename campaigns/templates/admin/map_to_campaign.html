@@ -1,0 +1,10 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p>{{ selected_count }} item{{ selected_count|pluralize }} selected.</p>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <input type="submit" value="Map" class="default">
+</form>
+{% endblock %}

@@ -62,6 +62,9 @@ class Product_Mapping(models.Model):
         managed = False
         db_table = 'sr_product_mappings'
 
+    def __str__(self):
+        return self.ga_product.item_name if self.ga_product else "-"
+
 class Page_Mapping(models.Model):
     ga_page = models.ForeignKey(Page, on_delete=models.CASCADE)
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE)
@@ -70,6 +73,9 @@ class Page_Mapping(models.Model):
     class Meta:
         managed = False
         db_table = 'sr_page_mappings'
+
+    def __str__(self):
+        return self.ga_page.url if self.ga_page else "-"
 
 class Commercial(models.Model):
     commercial_id = models.BigAutoField(primary_key=True)
