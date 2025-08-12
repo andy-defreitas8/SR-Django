@@ -1,7 +1,23 @@
 from django.db import models
 
+class Client(models.Model):
+    client_id = models.BigAutoField(primary_key=True)
+    name = models.CharField(max_length=200)
+    daily_activity_start_time = models.TimeField()
+    daily_activity_end_time = models.TimeField()
+    attribution_window_duration = models.IntegerField()
+    ga4_filename = models.CharField(max_length=200)
+    start_date = models.DateField()
+
+    class Meta:
+        managed = False
+        db_table = 'sr_clients'
+
+    def __str__(self):
+        return self.name
+
 class Product(models.Model):
-    client_id = models.BigIntegerField()
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
     ga_product_id = models.BigIntegerField(primary_key=True)
     item_id = models.CharField(max_length=100)
     item_name = models.CharField(max_length=100)
@@ -14,7 +30,7 @@ class Product(models.Model):
         return self.item_name
     
 class Page(models.Model):
-    client_id = models.BigIntegerField()
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
     ga_page_id = models.BigIntegerField(primary_key=True)
     url = models.CharField(max_length=200)
 
@@ -46,3 +62,5 @@ class Page_Baseline(models.Model):
     class Meta:
         managed = False
         db_table = 'page_baselines'
+
+

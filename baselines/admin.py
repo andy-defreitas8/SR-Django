@@ -13,7 +13,7 @@ from .models import Product, Page
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('item_name', 'ga_product_id', 'export_link')
+    list_display = ('item_name', 'ga_product_id', 'client', 'export_link')
     readonly_fields = ('export_link',)
     search_fields = ('item_name',)
 
