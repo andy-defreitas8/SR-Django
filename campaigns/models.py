@@ -29,7 +29,7 @@ class Campaign(models.Model):
         return self.name
 
 class ga_product(models.Model):
-    client_id = models.BigIntegerField()
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
     ga_product_id = models.BigIntegerField(primary_key=True)
     item_id = models.TextField()
     item_name = models.TextField()
@@ -42,7 +42,7 @@ class ga_product(models.Model):
         return self.item_name
 
 class ga_page(models.Model):
-    client_id = models.BigIntegerField()
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
     ga_page_id = models.BigIntegerField(primary_key=True)
     url = models.TextField()
 
