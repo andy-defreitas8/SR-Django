@@ -326,58 +326,20 @@ class PricingSheetAdmin(admin.ModelAdmin):
             # === ✅ Extract the single price_date for this batch ===
             price_date = validated_data[0]['price_date']
 
+            # ✅ Delete existing rows for that date
+            deleted_count, _ = Station_Pricing.objects.filter(price_date=price_date).delete()
+            self.message_user(request, f"Deleted {deleted_count} existing rows for {price_date}", level=messages.INFO)
+
             # === ✅ Ensure Pricing_Sheet exists for this date ===
             _, created = Pricing_Sheet.objects.get_or_create(price_date=price_date)
 
             if created:
                 messages.info(request, f"Pricing sheet for {price_date} was automatically created.")
 
-            # === ✅ Fetch existing records for that price_date ===
-            existing_rows = Station_Pricing.objects.filter(price_date=price_date).values(
-                'price_date',
-                'station_id',
-                'start_hour',
-                'end_hour',
-                'duration',
-                'sales_house_id',
-                'cost_type',
-                'cost'
-            )
-
-            # === ✅ Normalize existing rows for comparison ===
-            existing_set = {
-                (
-                    str(row['price_date']),
-                    int(row['station_id']),
-                    int(row['start_hour']) if row['start_hour'] is not None else None,
-                    int(row['end_hour']) if row['end_hour'] is not None else None,
-                    int(row['duration']) if row['duration'] is not None else None,
-                    int(row['sales_house_id']) if row['sales_house_id'] is not None else None,
-                    str(row['cost_type']),
-                    float(row['cost'])
-                )
-                for row in existing_rows
-            }
-
             # === ✅ Filter and normalize input rows ===
             rows_to_insert = []
             for row in validated_data:
-                row_tuple = (
-                    str(row['price_date']),
-                    int(row['station_id']),
-                    int(row.get('start_hour')) if row.get('start_hour') is not None else None,
-                    int(row.get('end_hour')) if row.get('end_hour') is not None else None,
-                    int(row.get('duration')) if row.get('duration') is not None else None,
-                    int(row.get('sales_house_id')) if row.get('sales_house_id') is not None else None,
-                    str(row['cost_type']),
-                    float(row['cost'])
-                )
-                if row_tuple not in existing_set:
-                    rows_to_insert.append(row)
-
-            if not rows_to_insert:
-                messages.info(request, "No new records to insert. All rows already exist.")
-                return redirect("admin:upload_pricing_csv")
+                rows_to_insert.append(row)
 
             # === ✅ Build model instances ===
             instances = [
@@ -402,7 +364,7 @@ class PricingSheetAdmin(admin.ModelAdmin):
             del request.session['validated_station_pricing']
             messages.success(
                 request,
-                f"Inserted {len(instances)} new rows. {len(validated_data) - len(instances)} duplicates were skipped."
+                f"Inserted {len(instances)} new rows."
             )
 
             # === Applying new pricing sheet to breaks===
