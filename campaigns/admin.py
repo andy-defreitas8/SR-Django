@@ -21,6 +21,40 @@ BASELINE_COLUMNS = ['day_of_week', 'hour_of_day', 'baseline_session', 'baseline_
 class CampaignSelectForm(forms.Form):
     campaign = forms.ModelChoiceField(queryset=Campaign.objects.all(), required=True)
 
+class MappedToCampaignFilter(admin.SimpleListFilter):
+    title = "Mapped to campaign"
+    parameter_name = "mapped"
+
+    def lookups(self, request, model_admin):
+        return [
+            ("yes", "Yes"),
+            ("no", "No"),
+        ]
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.filter(product_mapping__isnull=False).distinct()
+        elif self.value() == "no":
+            return queryset.filter(product_mapping__isnull=True)
+        return queryset
+
+class PageMappedToCampaignFilter(admin.SimpleListFilter):
+    title = "Mapped to campaign"
+    parameter_name = "mapped"
+
+    def lookups(self, request, model_admin):
+        return [
+            ("yes", "Yes"),
+            ("no", "No"),
+        ]
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.filter(page_mapping__isnull=False).distinct()
+        elif self.value() == "no":
+            return queryset.filter(page_mapping__isnull=True)
+        return queryset
+
 class BaselineAdminMixin:
     """Shared baseline export/upload + mapping logic for products/pages."""
 
@@ -32,7 +66,6 @@ class BaselineAdminMixin:
     mapping_model = None
     mapping_fk_name = None  # 'ga_product_id' or 'ga_page_id'
 
-    list_filter = ('client',)
     actions = ['upload_baseline_csv_action', 'map_to_campaign_action']
 
     # ==== Export Button ====
@@ -57,6 +90,11 @@ class BaselineAdminMixin:
                 'upload-baseline/',
                 self.admin_site.admin_view(self.upload_csv_view),
                 name=self.upload_view_name
+            ),
+            path(
+            'insert-baseline/',
+            self.admin_site.admin_view(self.insert_baseline_view),
+            name=f"{self.upload_view_name}_insert"
             ),
             # Map to campaign
             path(
@@ -99,6 +137,7 @@ class BaselineAdminMixin:
 
     def upload_csv_view(self, request):
         selected_ids = request.session.get('upload_baseline_ids', [])
+
         if request.method == "POST":
             uploaded_file = request.FILES.get("csv_file")
             if not uploaded_file:
@@ -124,22 +163,65 @@ class BaselineAdminMixin:
                     return redirect(f'admin:{self.upload_view_name}')
 
                 cleaned_data = df[BASELINE_COLUMNS].to_dict(orient='records')
+
+                # Store IDs + data for insert
                 request.session['validated_baseline_data'] = cleaned_data
+                request.session['validated_baseline_ids'] = selected_ids
+
                 self.message_user(
                     request,
                     f"Validated {len(cleaned_data)} rows for {len(selected_ids)} selected items. Ready to insert.",
                     level=messages.SUCCESS
                 )
-                return redirect('../')
+
+                return render(request, "admin/upload_baseline_csv.html", {
+                    "count": len(selected_ids),
+                    "columns": BASELINE_COLUMNS,
+                    "can_insert": True,
+                    "insert_view_name": f"admin:{self.upload_view_name}_insert"
+                })
             except Exception as e:
                 self.message_user(request, f"Error processing CSV: {e}", level=messages.ERROR)
                 return redirect(f'admin:{self.upload_view_name}')
 
         return render(request, "admin/upload_baseline_csv.html", {
             "count": len(selected_ids),
-            "columns": BASELINE_COLUMNS
+            "columns": BASELINE_COLUMNS,
+            "can_insert": False,
+            "insert_view_name": f"admin:{self.upload_view_name}_insert"
         })
+    
+    def insert_baseline_view(self, request):
+        baseline_data = request.session.get('validated_baseline_data', [])
+        selected_ids = request.session.get('validated_baseline_ids', [])
 
+        if not baseline_data or not selected_ids:
+            self.message_user(request, "No validated baseline data found.", level=messages.ERROR)
+            return redirect('../')
+
+        try:
+            with connection.cursor() as cursor:
+                for obj_id in selected_ids:
+                    for row in baseline_data:
+                        cursor.execute(
+                            f"""
+                            INSERT INTO {self.baseline_table}
+                            ({self.id_field}, day_of_week, hour_of_day, baseline_session, baseline_sales)
+                            VALUES (%s, %s, %s, %s, %s)
+                            """,
+                            [obj_id, row['day_of_week'], row['hour_of_day'], row['baseline_session'], row['baseline_sales']]
+                        )
+            self.message_user(request, f"Inserted {len(baseline_data) * len(selected_ids)} rows into {self.baseline_table}.", level=messages.SUCCESS)
+
+            # Clear session
+            request.session.pop('validated_baseline_data', None)
+            request.session.pop('validated_baseline_ids', None)
+
+        except Exception as e:
+            self.message_user(request, f"Error inserting baseline data: {e}", level=messages.ERROR)
+
+        return redirect('../')
+    
     # ==== Map to Campaign Action ====
     def map_to_campaign_action(self, request, queryset):
         ids = list(queryset.values_list('pk', flat=True))
@@ -248,8 +330,9 @@ class CampaignAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(BaselineAdminMixin, admin.ModelAdmin):
-    list_display = ('item_name', 'client', 'export_link')
+    list_display = ('item_name', 'client', 'has_baseline', 'export_link')
     search_fields = ('item_name',)
+    list_filter = ('client', MappedToCampaignFilter)
 
     export_view_name = 'product_export_baseline'
     upload_view_name = 'product_upload_baseline'
@@ -259,11 +342,22 @@ class ProductAdmin(BaselineAdminMixin, admin.ModelAdmin):
     mapping_model = Product_Mapping
     mapping_fk_name = 'ga_product_id'
 
+    def has_baseline(self, obj):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT COUNT(*) FROM product_baselines WHERE ga_product_id = %s",
+                [obj.ga_product_id]
+            )
+            count = cursor.fetchone()[0]
+        return "Yes" if count > 0 else "No"
+    has_baseline.short_description = "Has baseline"
+
 
 @admin.register(Page)
 class PageAdmin(BaselineAdminMixin, admin.ModelAdmin):
-    list_display = ('url', 'client', 'export_link')
+    list_display = ('url', 'client', 'has_baseline', 'export_link')
     search_fields = ('url',)
+    list_filter = ('client', PageMappedToCampaignFilter)
 
     export_view_name = 'page_export_baseline'
     upload_view_name = 'page_upload_baseline'
@@ -272,6 +366,17 @@ class PageAdmin(BaselineAdminMixin, admin.ModelAdmin):
     id_field = 'ga_page_id'
     mapping_model = Page_Mapping
     mapping_fk_name = 'ga_page_id'
+
+    def has_baseline(self, obj):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT COUNT(*) FROM page_baselines WHERE ga_page_id = %s",
+                [obj.ga_page_id]
+            )
+            count = cursor.fetchone()[0]
+        return "Yes" if count > 0 else "No"
+    has_baseline.short_description = "Has baseline"
+
 
     class Media:
         css = {
