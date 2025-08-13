@@ -245,22 +245,6 @@ class CampaignAdmin(admin.ModelAdmin):
     search_fields = ['name']
     inlines = [ProductMappingInline, PageMappingInline, CommercialInline]
 
-    def get_fields(self, request, obj=None):
-        return ['client', 'name']
-    
-    def get_changeform_initial_data(self, request):
-        # Pull client_id from the URL query and prefill the field
-        client_id = request.GET.get('client_id')
-        initial = super().get_changeform_initial_data(request)
-        if client_id:
-            initial['client'] = client_id
-        return initial
-    
-    class Media:
-        js = ('campaigns/js/client_filtering.js',)
-        # css = {
-        #     'all': ('admin/css/custom_admin.css',)
-        # }
 
 @admin.register(Product)
 class ProductAdmin(BaselineAdminMixin, admin.ModelAdmin):
