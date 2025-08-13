@@ -1,17 +1,179 @@
 from django.contrib import admin, messages
 from django import forms
-from .models import Client, Campaign, Product_Mapping, Page_Mapping, Commercial, Product, Page
 from django.shortcuts import render, redirect
-from django.urls import path
+from django.urls import path, reverse
+from django.http import HttpResponse
+from django.db import connection
+from django.utils.html import format_html
+import csv
+from io import TextIOWrapper
+import pandas as pd
+
+from .models import Client, Campaign, Product_Mapping, Page_Mapping, Commercial, Product, Page
 
 admin.site.site_header = "Smart Response Campaign Management Portal"
 admin.site.site_title = "Campaign Portal Admin"
 admin.site.index_title = "Welcome to the Campaign Admin"
 
+BASELINE_COLUMNS = ['day_of_week', 'hour_of_day', 'baseline_session', 'baseline_sales']
+
 # Form for selecting a campaign
-from django import forms
 class CampaignSelectForm(forms.Form):
     campaign = forms.ModelChoiceField(queryset=Campaign.objects.all(), required=True)
+
+class BaselineAdminMixin:
+    """Shared baseline export/upload + mapping logic for products/pages."""
+
+    export_view_name = None
+    upload_view_name = None
+    map_view_name = None
+    baseline_table = None
+    id_field = None
+    mapping_model = None
+    mapping_fk_name = None  # 'ga_product_id' or 'ga_page_id'
+
+    list_filter = ('client',)
+    actions = ['upload_baseline_csv_action', 'map_to_campaign_action']
+
+    # ==== Export Button ====
+    def export_link(self, obj):
+        return format_html(
+            '<a class="button" href="{}">Export Baseline CSV</a>',
+            reverse(f'admin:{self.export_view_name}', args=[obj.pk])
+        )
+    export_link.short_description = "Export"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            # Export baseline for single object
+            path(
+                '<path:object_id>/export-baseline/',
+                self.admin_site.admin_view(self.export_baseline),
+                name=self.export_view_name
+            ),
+            # Upload baseline for multiple
+            path(
+                'upload-baseline/',
+                self.admin_site.admin_view(self.upload_csv_view),
+                name=self.upload_view_name
+            ),
+            # Map to campaign
+            path(
+                'map-to-campaign/',
+                self.admin_site.admin_view(self.map_to_campaign_view),
+                name=self.map_view_name
+            ),
+        ]
+        return custom_urls + urls
+
+    # ==== Export ====
+    def export_baseline(self, request, object_id):
+        obj = self.model.objects.get(pk=object_id)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT day_of_week, hour_of_day, baseline_session, baseline_sales
+                FROM {self.baseline_table}
+                WHERE {self.id_field} = %s
+                ORDER BY day_of_week, hour_of_day
+                """,
+                [getattr(obj, self.id_field)]
+            )
+            rows = cursor.fetchall()
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{getattr(obj, self.id_field)}_baseline.csv"'
+        writer = csv.writer(response)
+        writer.writerow(BASELINE_COLUMNS)
+        for row in rows:
+            writer.writerow(row)
+        return response
+
+    # ==== Upload Baseline Action ====
+    def upload_baseline_csv_action(self, request, queryset):
+        ids = list(queryset.values_list(self.id_field, flat=True))
+        request.session['upload_baseline_ids'] = ids
+        return redirect(f'admin:{self.upload_view_name}')
+    upload_baseline_csv_action.short_description = "Upload baseline csv"
+
+    def upload_csv_view(self, request):
+        selected_ids = request.session.get('upload_baseline_ids', [])
+        if request.method == "POST":
+            uploaded_file = request.FILES.get("csv_file")
+            if not uploaded_file:
+                self.message_user(request, "No file uploaded", level=messages.ERROR)
+                return redirect(f'admin:{self.upload_view_name}')
+
+            if not uploaded_file.name.lower().endswith('.csv'):
+                self.message_user(request, "The uploaded file must be a .csv", level=messages.ERROR)
+                return redirect(f'admin:{self.upload_view_name}')
+
+            try:
+                df = pd.read_csv(TextIOWrapper(uploaded_file.file, encoding='utf-8'))
+
+                if not set(BASELINE_COLUMNS).issubset(df.columns):
+                    missing = set(BASELINE_COLUMNS) - set(df.columns)
+                    self.message_user(request, f"Missing required columns: {', '.join(missing)}", level=messages.ERROR)
+                    return redirect(f'admin:{self.upload_view_name}')
+
+                missing_required = df[BASELINE_COLUMNS].isnull().any()
+                if missing_required.any():
+                    missing_cols = missing_required[missing_required == True].index.tolist()
+                    self.message_user(request, f"Missing required values in: {', '.join(missing_cols)}", level=messages.ERROR)
+                    return redirect(f'admin:{self.upload_view_name}')
+
+                cleaned_data = df[BASELINE_COLUMNS].to_dict(orient='records')
+                request.session['validated_baseline_data'] = cleaned_data
+                self.message_user(
+                    request,
+                    f"Validated {len(cleaned_data)} rows for {len(selected_ids)} selected items. Ready to insert.",
+                    level=messages.SUCCESS
+                )
+                return redirect('../')
+            except Exception as e:
+                self.message_user(request, f"Error processing CSV: {e}", level=messages.ERROR)
+                return redirect(f'admin:{self.upload_view_name}')
+
+        return render(request, "admin/upload_baseline_csv.html", {
+            "count": len(selected_ids),
+            "columns": BASELINE_COLUMNS
+        })
+
+    # ==== Map to Campaign Action ====
+    def map_to_campaign_action(self, request, queryset):
+        ids = list(queryset.values_list('pk', flat=True))
+        request.session['map_object_ids'] = ids
+        return redirect(f'admin:{self.map_view_name}')
+    map_to_campaign_action.short_description = "Map to campaign"
+
+    def map_to_campaign_view(self, request):
+        selected_ids = request.session.get('map_object_ids', [])
+        if not selected_ids:
+            self.message_user(request, "No items selected.", level=messages.WARNING)
+            return redirect('..')
+
+        if request.method == "POST":
+            form = CampaignSelectForm(request.POST)
+            if form.is_valid():
+                campaign = form.cleaned_data['campaign']
+                for obj_id in selected_ids:
+                    self.mapping_model.objects.get_or_create(
+                        **{self.mapping_fk_name: obj_id, 'campaign': campaign}
+                    )
+                self.message_user(request, f"Mapped {len(selected_ids)} items to '{campaign.name}'.", level=messages.SUCCESS)
+                request.session.pop('map_object_ids', None)
+                return redirect('../')
+        else:
+            form = CampaignSelectForm()
+
+        context = dict(
+            self.admin_site.each_context(request),
+            title="Map to Campaign",
+            form=form,
+            selected_count=len(selected_ids),
+        )
+        return render(request, "admin/map_to_campaign.html", context)
 
 
 class CampaignInline(admin.TabularInline):
@@ -101,106 +263,36 @@ class CampaignAdmin(admin.ModelAdmin):
         # }
 
 @admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
-    list_display = ('item_name', 'client')
-    search_fields = ['item_name']
-    actions = ['map_to_campaign_action']
-    list_filter = ['client']
+class ProductAdmin(BaselineAdminMixin, admin.ModelAdmin):
+    list_display = ('item_name', 'client', 'export_link')
+    search_fields = ('item_name',)
 
-    def map_to_campaign_action(self, request, queryset):
-        # Store IDs of selected products in session
-        request.session['selected_product_ids'] = list(queryset.values_list('pk', flat=True))
-        return redirect('admin:product_map_to_campaign')
-
-    map_to_campaign_action.short_description = "Map to campaign"
-
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('map-to-campaign/', self.admin_site.admin_view(self.map_to_campaign_view), name='product_map_to_campaign'),
-        ]
-        return custom_urls + urls
-
-    def map_to_campaign_view(self, request):
-        selected_ids = request.session.get('selected_product_ids', [])
-        if not selected_ids:
-            self.message_user(request, "No products selected.", level=messages.WARNING)
-            return redirect('..')
-
-        if request.method == "POST":
-            form = CampaignSelectForm(request.POST)
-            if form.is_valid():
-                campaign = form.cleaned_data['campaign']
-                # Create mappings
-                for pid in selected_ids:
-                    Product_Mapping.objects.get_or_create(
-                        ga_product_id=pid,
-                        campaign=campaign
-                    )
-                self.message_user(request, f"Mapped {len(selected_ids)} products to '{campaign.name}'.", level=messages.SUCCESS)
-                request.session.pop('selected_product_ids', None)
-                return redirect('..')
-        else:
-            form = CampaignSelectForm()
-
-        context = dict(
-            self.admin_site.each_context(request),
-            title="Map Products to Campaign",
-            form=form,
-            selected_count=len(selected_ids),
-        )
-        return render(request, "admin/map_to_campaign.html", context)
+    export_view_name = 'product_export_baseline'
+    upload_view_name = 'product_upload_baseline'
+    map_view_name = 'product_map_to_campaign'
+    baseline_table = 'product_baselines'
+    id_field = 'ga_product_id'
+    mapping_model = Product_Mapping
+    mapping_fk_name = 'ga_product_id'
 
 
 @admin.register(Page)
-class PageAdmin(admin.ModelAdmin):
-    list_display = ('url', 'client')
-    search_fields = ['url']
-    actions = ['map_to_campaign_action']
-    list_filter = ['client']
+class PageAdmin(BaselineAdminMixin, admin.ModelAdmin):
+    list_display = ('url', 'client', 'export_link')
+    search_fields = ('url',)
 
-    def map_to_campaign_action(self, request, queryset):
-        request.session['selected_page_ids'] = list(queryset.values_list('pk', flat=True))
-        return redirect('admin:page_map_to_campaign')
+    export_view_name = 'page_export_baseline'
+    upload_view_name = 'page_upload_baseline'
+    map_view_name = 'page_map_to_campaign'
+    baseline_table = 'page_baselines'
+    id_field = 'ga_page_id'
+    mapping_model = Page_Mapping
+    mapping_fk_name = 'ga_page_id'
 
-    map_to_campaign_action.short_description = "Map to campaign"
-
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('map-to-campaign/', self.admin_site.admin_view(self.map_to_campaign_view), name='page_map_to_campaign'),
-        ]
-        return custom_urls + urls
-
-    def map_to_campaign_view(self, request):
-        selected_ids = request.session.get('selected_page_ids', [])
-        if not selected_ids:
-            self.message_user(request, "No pages selected.", level=messages.WARNING)
-            return redirect('..')
-
-        if request.method == "POST":
-            form = CampaignSelectForm(request.POST)
-            if form.is_valid():
-                campaign = form.cleaned_data['campaign']
-                for pid in selected_ids:
-                    Page_Mapping.objects.get_or_create(
-                        ga_page_id=pid,
-                        campaign=campaign
-                    )
-                self.message_user(request, f"Mapped {len(selected_ids)} pages to '{campaign.name}'.", level=messages.SUCCESS)
-                request.session.pop('selected_page_ids', None)
-                return redirect('..')
-        else:
-            form = CampaignSelectForm()
-
-        context = dict(
-            self.admin_site.each_context(request),
-            title="Map Pages to Campaign",
-            form=form,
-            selected_count=len(selected_ids),
-        )
-        return render(request, "admin/map_to_campaign.html", context)
-
+    class Media:
+        css = {
+            'all': ('admin/css/admin_extra.css',)
+        }
     
 @admin.register(Commercial)
 class CommercialAdmin(admin.ModelAdmin):
