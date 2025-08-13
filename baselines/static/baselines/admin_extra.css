@@ -1,7 +1,0 @@
-th.field-url,
-#result_list td:first-child {
-    max-width: 350px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
