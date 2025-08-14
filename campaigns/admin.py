@@ -54,6 +54,24 @@ class PageMappedToCampaignFilter(admin.SimpleListFilter):
         elif self.value() == "no":
             return queryset.filter(page_mapping__isnull=True)
         return queryset
+    
+class CommercialMappedToCampaignFilter(admin.SimpleListFilter):
+    title = "Mapped to campaign"
+    parameter_name = "mapped"
+
+    def lookups(self, request, model_admin):
+        return [
+            ("yes", "Yes"),
+            ("no", "No"),
+        ]
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.filter(campaign__isnull=False)
+        elif self.value() == "no":
+            return queryset.filter(campaign__isnull=True)
+        return queryset
+
 
 class BaselineAdminMixin:
     """Shared baseline export/upload + mapping logic for products/pages."""
@@ -347,7 +365,6 @@ class ProductAdmin(BaselineAdminMixin, admin.ModelAdmin):
     list_display = ('item_name', 'client', 'has_baseline', 'export_link')
     search_fields = ('item_name',)
     list_filter = ('client', MappedToCampaignFilter)
-    list_display_links = None
 
     export_view_name = 'product_export_baseline'
     upload_view_name = 'product_upload_baseline'
@@ -356,6 +373,7 @@ class ProductAdmin(BaselineAdminMixin, admin.ModelAdmin):
     id_field = 'ga_product_id'
     mapping_model = Product_Mapping
     mapping_fk_name = 'ga_product_id'
+    can_delete = False 
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -367,6 +385,17 @@ class ProductAdmin(BaselineAdminMixin, admin.ModelAdmin):
     def has_baseline(self, obj):
         return "Yes" if obj.ga_product_id in self.baseline_ids else "No"
     has_baseline.short_description = "Has baseline"
+
+    def get_readonly_fields(self, request, obj = ...):
+        if obj:
+            return['ga_product_id', 'item_id', 'item_name', 'client']
+        return self.fields
+    
+    def has_add_permission(self, request):
+        return False
+    
+    def has_delete_permission(self, request, obj = ...):
+        return False
 
 
 @admin.register(Page)
@@ -382,6 +411,7 @@ class PageAdmin(BaselineAdminMixin, admin.ModelAdmin):
     id_field = 'ga_page_id'
     mapping_model = Page_Mapping
     mapping_fk_name = 'ga_page_id'
+    can_delete = False
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -394,6 +424,17 @@ class PageAdmin(BaselineAdminMixin, admin.ModelAdmin):
         return "Yes" if obj.ga_page_id in self.baseline_ids else "No"
     has_baseline.short_description = "Has baseline"
 
+    def get_readonly_fields(self, request, obj = ...):
+        if obj:
+            return['ga_page_id', 'url', 'client']
+        return self.fields
+    
+    def has_add_permission(self, request):
+        return False
+    
+    def has_delete_permission(self, request, obj = ...):
+        return False
+
     class Media:
         css = {
             'all': ('admin/css/admin_extra.css',)
@@ -401,8 +442,9 @@ class PageAdmin(BaselineAdminMixin, admin.ModelAdmin):
     
 @admin.register(Commercial)
 class CommercialAdmin(admin.ModelAdmin):
-    list_display = ['clearcast_commercial_title', 'commercial_id', 'advertiser_id', 'campaign_id', 'commercial_number', 'web_address']
+    list_display = ['clearcast_commercial_title', 'campaign', 'web_address']
     search_fields = ['clearcast_commercial_title']
+    list_filter = [CommercialMappedToCampaignFilter]
 
     def has_add_permission(self, request):
         return False

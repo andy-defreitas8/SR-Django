@@ -31,8 +31,8 @@ class Campaign(models.Model):
 class Product(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE)
     ga_product_id = models.BigIntegerField(primary_key=True)
-    item_id = models.TextField()
-    item_name = models.TextField()
+    item_id = models.CharField()
+    item_name = models.CharField()
 
     class Meta:
         managed = False
@@ -44,7 +44,7 @@ class Product(models.Model):
 class Page(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE)
     ga_page_id = models.BigIntegerField(primary_key=True)
-    url = models.TextField()
+    url = models.CharField()
 
     class Meta:
         managed = False
@@ -90,7 +90,7 @@ class Commercial(models.Model):
         db_table = 'sr_commercials'
 
     def __str__(self):
-        return self.clearcast_commercial_title or f"Commercial {self.commercial_id}"
+        return self.clearcast_commercial_title
     
 class Product_Baseline(models.Model):
     ga_product = models.ForeignKey(Product, on_delete=models.CASCADE, db_column='ga_product_id')
