@@ -68,6 +68,13 @@ class BaselineAdminMixin:
 
     actions = ['upload_baseline_csv_action', 'map_to_campaign_action']
 
+    # Remove the delete selected action
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
+
     # ==== Export Button ====
     def export_link(self, obj):
         return format_html(
@@ -268,34 +275,36 @@ class CampaignInline(admin.TabularInline):
 class ProductMappingInline(admin.TabularInline):
     model = Product_Mapping
     extra = 0
-    can_delete = False
+    can_delete = True
     readonly_fields = ['product_name']
     fields = ['product_name']
     show_change_link = False
+    verbose_name = "Product"
+    verbose_name_plural = "Products"
 
     def product_name(self, obj):
-        return obj.ga_product.item_name if obj.ga_product else "-"
+        return obj.ga_product.item_name
     product_name.short_description = "Product"
 
     def has_add_permission(self, request, obj):
         return False
 
-
 class PageMappingInline(admin.TabularInline):
     model = Page_Mapping
     extra = 0
-    can_delete = False
+    can_delete = True
     readonly_fields = ['page_url']
     fields = ['page_url']
     show_change_link = False
+    verbose_name = "Page"
+    verbose_name_plural = "Pages"
 
     def page_url(self, obj):
-        return obj.ga_page.url if obj.ga_page else "-"
+        return obj.ga_page.url
     page_url.short_description = "Page"
 
     def has_add_permission(self, request, obj):
         return False
-
 
 class CommercialInline(admin.TabularInline):
     model = Commercial
@@ -327,12 +336,18 @@ class CampaignAdmin(admin.ModelAdmin):
     search_fields = ['name']
     inlines = [ProductMappingInline, PageMappingInline, CommercialInline]
 
+    class Media:
+        css = {
+            'all': ('admin/css/hide_inline_original.css',)
+        }
+
 
 @admin.register(Product)
 class ProductAdmin(BaselineAdminMixin, admin.ModelAdmin):
     list_display = ('item_name', 'client', 'has_baseline', 'export_link')
     search_fields = ('item_name',)
     list_filter = ('client', MappedToCampaignFilter)
+    list_display_links = None
 
     export_view_name = 'product_export_baseline'
     upload_view_name = 'product_upload_baseline'
