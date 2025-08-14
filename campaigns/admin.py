@@ -357,14 +357,15 @@ class ProductAdmin(BaselineAdminMixin, admin.ModelAdmin):
     mapping_model = Product_Mapping
     mapping_fk_name = 'ga_product_id'
 
-    def has_baseline(self, obj):
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
         with connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT COUNT(*) FROM product_baselines WHERE ga_product_id = %s",
-                [obj.ga_product_id]
-            )
-            count = cursor.fetchone()[0]
-        return "Yes" if count > 0 else "No"
+            cursor.execute("SELECT DISTINCT ga_product_id FROM product_baselines")
+            self.baseline_ids = {row[0] for row in cursor.fetchall()}
+        return qs
+
+    def has_baseline(self, obj):
+        return "Yes" if obj.ga_product_id in self.baseline_ids else "No"
     has_baseline.short_description = "Has baseline"
 
 
@@ -382,16 +383,16 @@ class PageAdmin(BaselineAdminMixin, admin.ModelAdmin):
     mapping_model = Page_Mapping
     mapping_fk_name = 'ga_page_id'
 
-    def has_baseline(self, obj):
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
         with connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT COUNT(*) FROM page_baselines WHERE ga_page_id = %s",
-                [obj.ga_page_id]
-            )
-            count = cursor.fetchone()[0]
-        return "Yes" if count > 0 else "No"
-    has_baseline.short_description = "Has baseline"
+            cursor.execute("SELECT DISTINCT ga_page_id FROM page_baselines")
+            self.baseline_ids = {row[0] for row in cursor.fetchall()}
+        return qs
 
+    def has_baseline(self, obj):
+        return "Yes" if obj.ga_page_id in self.baseline_ids else "No"
+    has_baseline.short_description = "Has baseline"
 
     class Media:
         css = {
