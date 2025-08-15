@@ -327,7 +327,7 @@ class PageMappingInline(admin.TabularInline):
 class CommercialInline(admin.TabularInline):
     model = Commercial
     extra = 0
-    can_delete = False
+    can_delete = True
     readonly_fields = ['commercial_title']
     fields = ['commercial_title']
     show_change_link = False
